@@ -6,4 +6,4 @@ WORKDIR /app
 ENV UV_NO_DEV=1
 RUN uv sync --locked
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["fastapi", "run", "app/main.py", "--port", "80"]
+CMD ["fastapi", "run", "app/main.py", "--port", "81"]
