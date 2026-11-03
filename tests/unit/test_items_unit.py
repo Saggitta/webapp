@@ -1,98 +1,40 @@
-"""Unit tests for ItemStore — no HTTP, no FastAPI, pure logic."""
+"""Unit tests for Pydantic schemas in app/items.py.
+
+ItemStore is gone — these tests cover the validation rules on ItemCreate
+and the ORM-mode behaviour of Item.
+"""
 import pytest
 
-from app.items import Item, ItemCreate, ItemStore
-
-
-@pytest.fixture()
-def store() -> ItemStore:
-    """Fresh store for every test."""
-    return ItemStore()
-
-
-@pytest.fixture()
-def populated_store(store: ItemStore) -> ItemStore:
-    store.create(ItemCreate(name="Widget", description="A small widget", price=9.99))
-    store.create(ItemCreate(name="Gadget", description="A cool gadget", price=24.99))
-    return store
+from app.items import Item, ItemCreate
 
 
 # ---------------------------------------------------------------------------
-# create
+# ItemCreate — valid inputs
 # ---------------------------------------------------------------------------
 
-def test_create_returns_item_with_id(store: ItemStore) -> None:
-    payload = ItemCreate(name="Widget", description="desc", price=5.0)
-    item = store.create(payload)
-    assert isinstance(item, Item)
-    assert item.id == 1
+def test_item_create_accepts_valid_payload() -> None:
+    item = ItemCreate(name="Widget", description="A widget", price=9.99)
     assert item.name == "Widget"
-    assert item.price == 5.0
+    assert item.price == 9.99
 
 
-def test_create_auto_increments_id(store: ItemStore) -> None:
-    item1 = store.create(ItemCreate(name="A", price=1.0))
-    item2 = store.create(ItemCreate(name="B", price=2.0))
-    assert item2.id == item1.id + 1
-
-
-# ---------------------------------------------------------------------------
-# all
-# ---------------------------------------------------------------------------
-
-def test_all_returns_empty_list_initially(store: ItemStore) -> None:
-    assert store.all() == []
-
-
-def test_all_returns_all_created_items(populated_store: ItemStore) -> None:
-    items = populated_store.all()
-    assert len(items) == 2
-    names = {i.name for i in items}
-    assert names == {"Widget", "Gadget"}
+def test_item_create_description_defaults_to_empty_string() -> None:
+    item = ItemCreate(name="Widget", price=1.0)
+    assert item.description == ""
 
 
 # ---------------------------------------------------------------------------
-# get
-# ---------------------------------------------------------------------------
-
-def test_get_returns_correct_item(populated_store: ItemStore) -> None:
-    item = populated_store.get(1)
-    assert item is not None
-    assert item.name == "Widget"
-
-
-def test_get_returns_none_for_missing_id(store: ItemStore) -> None:
-    assert store.get(999) is None
-
-
-# ---------------------------------------------------------------------------
-# delete
-# ---------------------------------------------------------------------------
-
-def test_delete_removes_item(populated_store: ItemStore) -> None:
-    result = populated_store.delete(1)
-    assert result is True
-    assert populated_store.get(1) is None
-
-
-def test_delete_returns_false_for_missing_id(store: ItemStore) -> None:
-    assert store.delete(999) is False
-
-
-def test_delete_does_not_affect_other_items(populated_store: ItemStore) -> None:
-    populated_store.delete(1)
-    remaining = populated_store.all()
-    assert len(remaining) == 1
-    assert remaining[0].name == "Gadget"
-
-
-# ---------------------------------------------------------------------------
-# Pydantic validation
+# ItemCreate — invalid inputs
 # ---------------------------------------------------------------------------
 
 def test_item_create_rejects_empty_name() -> None:
     with pytest.raises(Exception):
         ItemCreate(name="", price=1.0)
+
+
+def test_item_create_rejects_name_too_long() -> None:
+    with pytest.raises(Exception):
+        ItemCreate(name="x" * 101, price=1.0)
 
 
 def test_item_create_rejects_zero_price() -> None:
@@ -103,3 +45,33 @@ def test_item_create_rejects_zero_price() -> None:
 def test_item_create_rejects_negative_price() -> None:
     with pytest.raises(Exception):
         ItemCreate(name="X", price=-5.0)
+
+
+def test_item_create_rejects_description_too_long() -> None:
+    with pytest.raises(Exception):
+        ItemCreate(name="X", price=1.0, description="x" * 501)
+
+
+# ---------------------------------------------------------------------------
+# Item — ORM mode (from_attributes=True)
+# ---------------------------------------------------------------------------
+
+def test_item_can_be_built_from_orm_like_object() -> None:
+    """Simulate what SQLAlchemy returns: an object with attributes."""
+
+    class FakeRow:
+        id = 42
+        name = "Gadget"
+        description = "cool"
+        price = 19.99
+
+    item = Item.model_validate(FakeRow())
+    assert item.id == 42
+    assert item.name == "Gadget"
+    assert item.price == 19.99
+
+
+def test_item_serialises_to_dict() -> None:
+    item = Item(id=1, name="A", description="", price=5.0)
+    d = item.model_dump()
+    assert d == {"id": 1, "name": "A", "description": "", "price": 5.0}

@@ -1,6 +1,14 @@
-"""In-memory item store — simple enough to learn with, easy to swap for a DB later."""
+"""Pydantic schemas and async CRUD functions for items."""
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import ItemModel
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
 
 class ItemCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -11,28 +19,35 @@ class ItemCreate(BaseModel):
 class Item(ItemCreate):
     id: int
 
+    model_config = {"from_attributes": True}
 
-class ItemStore:
-    """Thread-unsafe in-memory store. Good enough for learning; replace with a real DB later."""
 
-    def __init__(self) -> None:
-        self._items: dict[int, Item] = {}
-        self._next_id: int = 1
+# ---------------------------------------------------------------------------
+# CRUD
+# ---------------------------------------------------------------------------
 
-    def all(self) -> list[Item]:
-        return list(self._items.values())
+async def get_all_items(db: AsyncSession) -> list[Item]:
+    result = await db.execute(select(ItemModel).order_by(ItemModel.id))
+    return [Item.model_validate(row) for row in result.scalars()]
 
-    def get(self, item_id: int) -> Item | None:
-        return self._items.get(item_id)
 
-    def create(self, payload: ItemCreate) -> Item:
-        item = Item(id=self._next_id, **payload.model_dump())
-        self._items[self._next_id] = item
-        self._next_id += 1
-        return item
+async def get_item(db: AsyncSession, item_id: int) -> Item | None:
+    row = await db.get(ItemModel, item_id)
+    return Item.model_validate(row) if row else None
 
-    def delete(self, item_id: int) -> bool:
-        if item_id not in self._items:
-            return False
-        del self._items[item_id]
-        return True
+
+async def create_item(db: AsyncSession, payload: ItemCreate) -> Item:
+    row = ItemModel(**payload.model_dump())
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return Item.model_validate(row)
+
+
+async def delete_item(db: AsyncSession, item_id: int) -> bool:
+    row = await db.get(ItemModel, item_id)
+    if row is None:
+        return False
+    await db.delete(row)
+    await db.commit()
+    return True
