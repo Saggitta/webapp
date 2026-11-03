@@ -4,14 +4,19 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi[standard]>=0.142.2",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.0.0",
+    "pytest-asyncio>=0.24.0",
     "httpx>=0.28.1",
+    "aiosqlite>=0.20.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
